@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import select
 import sys
@@ -94,19 +95,20 @@ class SessionTailer:
         self._files: dict[Path, tuple[object, str, str]] = {}
         self._last_scan = 0.0
 
-    def _scan_files(self) -> list[tuple[str, str]]:
-        """Discover new session files. Returns list of (agent, session_id) for newly added files."""
-        new: list[tuple[str, str]] = []
+    def _scan_files(self) -> list[tuple[str, str, str | None]]:
+        """Discover new session files. Returns list of (agent, session_id, model) for new files."""
+        new: list[tuple[str, str, str | None]] = []
         for agent in self.agents:
             for path in get_session_files(agent, include_deleted=self.include_deleted):
                 if path not in self._files:
                     try:
                         fh = open(path, "r")  # noqa: SIM115
-                        # Seek to end — we only want new lines
+                        # Read header lines to get model info before seeking to end
+                        model = _read_session_model(path)
                         fh.seek(0, os.SEEK_END)
                         session_id = extract_session_id(path)
                         self._files[path] = (fh, agent, session_id)
-                        new.append((agent, session_id))
+                        new.append((agent, session_id, model))
                     except OSError:
                         pass
         self._last_scan = time.monotonic()
@@ -128,9 +130,10 @@ class SessionTailer:
                 # Periodically scan for new files
                 if time.monotonic() - self._last_scan > self.new_files_interval:
                     new = self._scan_files()
-                    for agent, session_id in new:
+                    for agent, session_id, model in new:
+                        model_str = f" model={model}" if model else ""
                         console.print(
-                            f"[dim]  + new session [cyan][{agent}][/cyan] ({session_id[:8]})[/dim]"
+                            f"  [dim]+[/dim] new session [cyan][{agent}][/cyan] [dim]({session_id[:8]})[/dim] [magenta]{model_str}[/magenta]"
                         )
 
                 found_any = False
@@ -159,6 +162,25 @@ class SessionTailer:
                     fh.close()
                 except Exception:
                     pass
+
+
+def _read_session_model(path: Path) -> str | None:
+    """Read the model from the first few lines of a session JSONL file."""
+    try:
+        with open(path, "r") as f:
+            for _ in range(5):
+                line = f.readline()
+                if not line:
+                    break
+                try:
+                    obj = json.loads(line)
+                    if obj.get("type") == "model_change":
+                        return obj.get("modelId")
+                except (json.JSONDecodeError, ValueError):
+                    continue
+    except OSError:
+        pass
+    return None
 
 
 @click.command()
