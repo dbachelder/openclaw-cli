@@ -45,7 +45,10 @@ def format_message(msg: ParsedMessage, *, show_session: bool = True) -> Text:
         line.append("USER ", style="bold green")
     elif msg.role == "assistant":
         model_tag = msg.model or "unknown"
-        line.append(f"AI({model_tag}) ", style="bold magenta")
+        if model_tag == "delivery-mirror":
+            line.append("AI(mirror) ", style="bold blue")
+        else:
+            line.append(f"AI({model_tag}) ", style="bold magenta")
 
     # Cost
     if msg.cost is not None and msg.cost > 0:
