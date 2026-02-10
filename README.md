@@ -2,6 +2,8 @@
 
 CLI utilities for [OpenClaw](https://github.com/openclaw/openclaw) — tail logs, inspect sessions, and more.
 
+![ocli tail in action](assets/screenshot.png)
+
 ## Install
 
 ```bash
