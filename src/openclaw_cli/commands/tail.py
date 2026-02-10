@@ -94,8 +94,9 @@ class SessionTailer:
         self._files: dict[Path, tuple[object, str, str]] = {}
         self._last_scan = 0.0
 
-    def _scan_files(self) -> None:
-        """Discover new session files."""
+    def _scan_files(self) -> list[tuple[str, str]]:
+        """Discover new session files. Returns list of (agent, session_id) for newly added files."""
+        new: list[tuple[str, str]] = []
         for agent in self.agents:
             for path in get_session_files(agent, include_deleted=self.include_deleted):
                 if path not in self._files:
@@ -105,9 +106,11 @@ class SessionTailer:
                         fh.seek(0, os.SEEK_END)
                         session_id = extract_session_id(path)
                         self._files[path] = (fh, agent, session_id)
+                        new.append((agent, session_id))
                     except OSError:
                         pass
         self._last_scan = time.monotonic()
+        return new
 
     def tail(self) -> None:
         """Tail all session files, yielding formatted output."""
@@ -124,12 +127,10 @@ class SessionTailer:
             while True:
                 # Periodically scan for new files
                 if time.monotonic() - self._last_scan > self.new_files_interval:
-                    old_count = len(self._files)
-                    self._scan_files()
-                    new_count = len(self._files)
-                    if new_count > old_count:
+                    new = self._scan_files()
+                    for agent, session_id in new:
                         console.print(
-                            f"[dim]  + {new_count - old_count} new session(s)[/dim]"
+                            f"[dim]  + new session [cyan][{agent}][/cyan] ({session_id[:8]})[/dim]"
                         )
 
                 found_any = False
